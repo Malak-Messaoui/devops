@@ -16,7 +16,7 @@ pipeline {
                 sh 'mvn clean compile package -DskipTests'
             }
         }
-
+        
         stage('SONARQUBE') {
             environment {
                 SONAR_HOST_URL = 'http://192.168.50.4:9000/'
@@ -27,11 +27,30 @@ pipeline {
             }
         }
 
+        stage('Docker Build') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker build -t malakmessaoui/spring-k8s-app:2.0 .
+                        docker push malakmessaoui/spring-k8s-app:2.0
+                    '''
+                }
+            }
+        }
+
         stage('Deploy to Kubernetes') {
             steps {
-                withKubeConfig([credentialsId: 'kubeconfig']) {
-                    sh 'kubectl apply -f k8s/'
-                    sh 'kubectl rollout status deployment/spring-deployment'
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''
+                        export KUBECONFIG=$KUBECONFIG
+                        kubectl get nodes
+                        kubectl apply -f k8s/
+                    '''
                 }
             }
         }
